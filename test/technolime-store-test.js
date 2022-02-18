@@ -13,7 +13,12 @@ describe('TechnoLimeStore contract', () => {
     it('Should set the right owner', async () => {
       expect(await technoLimeStore.owner()).to.equal(owner.address);
     });
+  })
 
+  describe('Products', () => {
+    it('Should successfully create product', async () => {
+      
+    });
   })
 
 });
