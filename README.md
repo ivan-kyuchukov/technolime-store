@@ -1,13 +1,13 @@
-# Basic Sample Hardhat Project
+# TechnoLime Store Project
 
-Try running some of the following tasks:
+Although at first I implemented the solution using the Factory pattern, I changed it to a more basic implementation for simplicity and gas optimization.
+
+Run npm install and play around with the following commands:
 
 ```shell
-npx hardhat accounts
 npx hardhat compile
-npx hardhat clean
 npx hardhat test
 npx hardhat node
-node scripts/sample-script.js
-npx hardhat help
+npx hardhat run scripts/deploy.js --network localhost
+npx hardhat console --network localhost
 ```
