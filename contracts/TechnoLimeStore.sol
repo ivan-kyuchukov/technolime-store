@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./Ownable.sol";
 import "hardhat/console.sol";
 
 contract TechnoLimeStore is Ownable {
@@ -10,27 +10,38 @@ contract TechnoLimeStore is Ownable {
     uint id;
     string name;
     uint price;
-    uint quantity;
+    uint8 quantity;
+  }
+
+  struct Order {
+    uint productId;
+    uint8 productQuantity;
+    address buyerAddress;
+    uint createdAtBlock;
   }
   
   mapping(uint => Product) private products;
   uint[] private productIds;
+  Order[] private orders;
 
-  uint lastProductId = 1;
+  uint private allowedReturnsBlockCount = 100;
+  uint private nextProductId = 1;
 
-  enum ProductAction { Created, Updated }
+  enum ProductActions { Created, Updated }
+  enum OrderActions { Created, Returned }
 
-  event ProductCreateUpdateSuccess(uint productId, uint productAction);
-  event ProductOrderMade(uint productId);
+  event ProductAction(uint productId, ProductActions action);
+  event OrderAction(uint productId, uint quantity, address buyerAddress, OrderActions action);
 
-  // Admin methods
-  // We assume the name will be unique in our store (something like a SKU code)
-  function createProduct(string memory _name, uint _price, uint _quantity) public onlyOwner {
+  // Admin functions
+  // We assume the name will be unique in our store (something like an SKU code)
+  function createProduct(string calldata _name, uint _price, uint8 _quantity) public onlyOwner {
     
     require(bytes(_name).length > 0, "Name cannot be empty.");
     require(_price > 0, "Product cannot be free.");
     require(_quantity > 0, "Please provide at least one product quantity.");
 
+    // TODO: trim name left and right here as well in the front-end
     uint productId = productIdByName(_name);
 
     if (productId > 0) {
@@ -38,58 +49,96 @@ contract TechnoLimeStore is Ownable {
 
       products[productId].quantity = _quantity;
       
-      emit ProductCreateUpdateSuccess(productId, uint(ProductAction.Updated));
+      emit ProductAction(productId, ProductActions.Updated);
     }
     else {
-      productId = lastProductId;
+      productId = nextProductId;
       products[productId].id = productId;
       products[productId].name = _name;
       products[productId].price = _price;
       products[productId].quantity = _quantity;
 
       productIds.push(productId);
-      lastProductId++;
+      nextProductId++;
 
-      emit ProductCreateUpdateSuccess(productId, uint(ProductAction.Created));
+      emit ProductAction(productId, ProductActions.Created);
     }
-
-    // emit StatusChange(productId, products[productId].quantity, uint(products[productId].status));
   }
 
-  // Buyer methods
-  function buyProduct(uint _id) public payable {
-    Product memory product = products[_id];
+  // Buyer functions
+  // We asume a buyer can buy more than one product
+  // order IDs not used for simplicity
+  function placeOrder(uint _productId, uint8 _quantity) external payable {
+    Product storage product = products[_productId];
     require(product.id > 0, "Product doesn't exist.");
-    require(msg.value == product.price, "Please send the exact price amount.");
-    require(product.quantity > 0, "Unsufficient product quantity in stock.");
+    int existingOrderIndex = getOrderIndex(_productId, msg.sender);
+    require(_quantity > 0, "You need to buy at least one product.");
+    require(existingOrderIndex == -1, "Order exists. You cannot place more than one order for the same product.");
+    require(product.quantity >= _quantity, "Unsufficient product quantity in stock.");
+    require(msg.value == product.price * _quantity, "Please send the exact price amount.");
 
-    product.quantity--;
-    // TODO: implement contract balance
-    // TODO: implement order history
+    product.quantity -= _quantity;
+    orders.push(Order(_productId, _quantity, msg.sender, block.number));
 
-    emit ProductOrderMade(_id);
+    emit OrderAction(_productId, _quantity, msg.sender, OrderActions.Created);
   }
 
-  // TODO: function handleReturn()
+  // We assume buyer cannot partially return an order
+  function returnOrder(uint _productId) external payable {
+    Product storage product = products[_productId];
+    require(product.id > 0, "Product doesn't exist.");
+    int existingOrderIndex = getOrderIndex(_productId, msg.sender);
+    require(existingOrderIndex > -1, "Order doesn't exist.");
+    Order memory existingOrder = orders[uint(existingOrderIndex)];
+    require(block.number - existingOrder.createdAtBlock <= allowedReturnsBlockCount, "You can only return an order no later than 100 blocks of time.");
 
-  // function getAllProductIds() external view returns (uint[] memory) {
-  //   return productIds;
-  // }
+    product.quantity += existingOrder.productQuantity;
+    uint amountToReturn = existingOrder.productQuantity * product.price;
+    (bool sendSuccess, ) = address(msg.sender).call{value: amountToReturn}("");
+    require(sendSuccess, "Failed to send refund.");
+    removeOrderAtIndex(uint(existingOrderIndex));
+
+    emit OrderAction(_productId, existingOrder.productQuantity, msg.sender, OrderActions.Returned);
+  }
+
+  // Helper functions
+  function getStoreBalance() external view returns (uint) {
+        return address(this).balance;
+  }
 
   function getAllProducts() external view returns (Product[] memory) {
     Product[] memory productsArray = new Product[](productIds.length);
     for (uint i = 0; i < productIds.length; i++) {
-      Product storage product = products[productIds[i]];
+      Product memory product = products[productIds[i]];
       productsArray[i] = product;
     }
     return productsArray;
+  }
+
+  function getProductOrders(uint _productId) external view returns (Order[] memory) {
+    // Looping through arrays is not a good idea due to performance and gas optimization and should be done off-chain in a web2 DB
+    uint numberOfMatches;
+    for(uint i = 0; i < orders.length; i++) {
+      if (orders[i].productId == _productId) {
+        numberOfMatches++;
+      }
+    }
+    Order[] memory productOrders = new Order[](numberOfMatches);
+    uint nextIndex;
+    for(uint i = 0; i < orders.length; i++) {
+      if (orders[i].productId == _productId) {
+        productOrders[nextIndex] = orders[i];
+        nextIndex++;
+      }
+    }
+    return productOrders;
   }
 
   function getProductCount() external view returns (uint) {
     return productIds.length;
   }
 
-  function productIdByName(string memory _name) internal view returns (uint) {
+  function productIdByName(string memory _name) private view returns (uint) {
     if (productIds.length == 0) {
       return 0;
     }
@@ -100,5 +149,22 @@ contract TechnoLimeStore is Ownable {
       }
     }
     return 0;
+  }
+
+  function getOrderIndex(uint _productId, address buyerAddress) private view returns (int) {
+    for (uint i = 0; i < orders.length; i++) {
+      if (orders[i].productId == _productId && orders[i].buyerAddress == buyerAddress) {
+        return int(i);
+      }
+    }
+    return -1;
+  }
+
+  function removeOrderAtIndex(uint _index) private {
+    require(_index < orders.length, "Index out of bound.");
+    for(uint i = _index; i < orders.length - 1; i++) {
+      orders[i] = orders[i + 1];
+    }
+    orders.pop();
   }
 }
