@@ -24,7 +24,7 @@ contract TechnoLimeStore is Ownable {
   uint[] private productIds;
   Order[] private orders;
 
-  uint private allowedReturnsBlockCount = 100;
+  uint private ALLOWED_RETURN_BLOCK_COUNT = 100;
   uint private nextProductId = 1;
 
   enum ProductActions { Created, Updated }
@@ -36,7 +36,6 @@ contract TechnoLimeStore is Ownable {
   // Admin functions
   // We assume the name will be unique in our store (something like an SKU code)
   function createProduct(string calldata _name, uint _price, uint8 _quantity) public onlyOwner {
-    
     require(bytes(_name).length > 0, "Name cannot be empty.");
     require(_price > 0, "Product cannot be free.");
     require(_quantity > 0, "Please provide at least one product quantity.");
@@ -90,7 +89,7 @@ contract TechnoLimeStore is Ownable {
     int existingOrderIndex = getOrderIndex(_productId, msg.sender);
     require(existingOrderIndex > -1, "Order doesn't exist.");
     Order memory existingOrder = orders[uint(existingOrderIndex)];
-    require(block.number - existingOrder.createdAtBlock <= allowedReturnsBlockCount, "You can only return an order no later than 100 blocks of time.");
+    require(block.number - existingOrder.createdAtBlock <= ALLOWED_RETURN_BLOCK_COUNT, "You can only return an order no later than 100 blocks of time.");
 
     product.quantity += existingOrder.productQuantity;
     uint amountToReturn = existingOrder.productQuantity * product.price;
