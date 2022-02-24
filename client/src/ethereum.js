@@ -1,4 +1,4 @@
-import { ethers, utils, Contract } from 'ethers';
+import { ethers, Contract } from 'ethers';
 import SmartContract from './contracts/TechnoLimeStore.json';
 
 const getBlockchain = () =>
@@ -13,18 +13,6 @@ const getBlockchain = () =>
           SmartContract.abi,
           signer
         );
-
-        // const filter = {
-        //   address: SmartContract.address,
-        //   topics: [
-        //     utils.id("OrderAction(uint256,uint256,address,uint8)")
-        //   ]
-        // }
-        // provider.on(filter, (data) => {
-        //   console.log(data)
-        //     // do whatever you want here
-        //     // I'm pretty sure this returns a promise, so don't forget to resolve it
-        // })
 
         resolve({signerAddress, contract, provider});
       }

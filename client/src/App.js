@@ -1,5 +1,4 @@
 import './App.css';
-import { utils } from 'ethers';
 import getBlockchain from './ethereum.js';
 import { useState, useEffect } from 'react';
 
@@ -7,85 +6,155 @@ function App() {
 
   const [contract, setContract] = useState(undefined);
   const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(null);
+  const [newProduct, setNewProduct] = useState({});
 
   useEffect(() => {
     const init = async () => {
-      const { contract, provider } = await getBlockchain();
+      const { contract } = await getBlockchain();
       setContract(contract);
-
-      const filter = {
-        address: contract.address,
-        topics: [
-          utils.id("OrderAction(uint256,uint256,address,uint8)")
-        ]
-      }
-      provider.on(filter, (data) => {
-        console.log(data)
-        getProducts()
-          // do whatever you want here
-          // I'm pretty sure this returns a promise, so don't forget to resolve it
-      })
     };
-
     init();
+  }, []);
 
+  useEffect(() => {
     if (contract) {
-      getProducts();
+      getProducts()
     }
-  }, [contract]);
+  }, [contract])
 
-  if (typeof contract === 'undefined') {
-    return 'Loading...';
+  function getProducts() {
+    contract.getAllProducts()
+      .then((data) => {
+        const products = data.map(product => {
+          return {
+            id: product.id.toNumber(),
+            name: product.name,
+            price: product.price.toNumber(),
+            quantity: product.quantity
+          }
+        })
+      setProducts(products);
+    })
   }
 
-  function buyProduct(productId, price) {
-    contract.placeOrder(productId, 1, {value: price})
+  if (typeof contract === 'undefined') {
+    return <div>Loading...</div>;
+  }
+
+  function createProduct() {
+    contract.createProduct(newProduct.name, newProduct.price, newProduct.quantity)
+      .then(() => {
+        contract.on('ProductAction', () => {
+          getProducts();
+        })
+      })
       .catch(err => alert(err.data.message.replace('Error: VM Exception while processing transaction: reverted with reason string ', '')))
   }
 
-  function getProducts() {
-    contract.getAllProducts().then((data) => {
-      setProducts(data);
-    })
+  function buyProduct(product) {
+    contract.placeOrder(product.id, 1, {value: product.price})
+      .then(() => {
+        contract.on('OrderAction', () => {
+          getProducts();
+        })
+        setOrders(null);
+      })
+      .catch(err => alert(err.data.message.replace('Error: VM Exception while processing transaction: reverted with reason string ', '')))
+  }
+
+  function returnOrder(order) {
+    contract.returnOrder(order.productId)
+      .then(() => {
+        setOrders(null);
+        contract.on('OrderAction', () => {
+          getProducts();
+        })
+      })
+      .catch(err => alert(err.data.message.replace('Error: VM Exception while processing transaction: reverted with reason string ', '')))
   }
 
   function getOrders(productId) {
-    contract.getProductOrders(productId).then((data) => {
-      console.log(productId, data)
-      setOrders(data);
-    })
+    contract.getProductOrders(productId)
+      .then((data) => {
+        const orders = data.map(order => {
+          return {
+            productId: order.productId.toNumber(),
+            productQuantity: order.productQuantity,
+            buyerAddress: order.buyerAddress
+          }
+        });
+        setOrders(orders);
+      })
   }
 
   function getProductsListElement() {
-    return products.map((product, index) => {
-      return <li key={index}>
-        {product.name} - Ξ{product.price.toNumber()} - {product.quantity} left <button onClick={() => buyProduct(product.id.toNumber(), product.price.toNumber())}>Buy Product</button> <button onClick={() => getOrders(product.id.toNumber())}>Get Product Orders</button></li>
-    })
+    if (products.length > 0) {
+      return products.map((product, index) => {
+        return (
+          <div key={index}>
+            {product.name} - {product.price} wei - {product.quantity} left 
+            <button disabled={product.quantity === 0} onClick={() => buyProduct(product)} className="margin-l">
+              Buy Product 
+            </button> 
+            <button onClick={() => getOrders(product.id)} className="margin-l">
+              Get Product Orders 
+            </button>
+          </div>)
+      })
+    }
+    return <div>No available products</div>
   }
 
   function getOrdersListElement() {
-    return orders.map((order, index) => {
-      return <li key={index}>
-        {order.productId.toNumber()} - {order.productQuantity} - {order.buyerAddress}</li>
-    })
+    if (orders.length > 0) {
+      return orders.map((order, index) => {
+        return (
+          <div key={index}>
+            ProductID: {order.productId} - {order.productQuantity} item(s) - Wallet: {order.buyerAddress}
+            <button onClick={() => returnOrder(order)} className="margin-l">
+              Return Order 
+            </button>
+          </div>)
+      })
+    }
+    return <div>No orders for product</div>
+  }
+  
+  function handleInputChange(event) {
+    const fieldName = event.target.name;
+    const fieldValue = event.target.value;
+    
+    switch (fieldName) {
+      case 'name':
+        setNewProduct({ ...newProduct, name: fieldValue });
+        break;
+      case 'price':
+        setNewProduct({ ...newProduct, price: fieldValue });
+        break;
+      case 'quantity':
+        setNewProduct({ ...newProduct, quantity: fieldValue });
+        break;
+      default:
+    }
   }
 
   return (
     <div className="App">
       <header className="App-header">
-        <p>Products</p>
+        <p>New Product</p>
+        <input name="name" type="text" placeholder='Product name..' onChange={handleInputChange} className="margin-bot"></input>
+        <input name="price" type="number" placeholder='Price..' onChange={handleInputChange} className="margin-bot"></input>
+        <input name="quantity" type="number" placeholder='Quantity..' onChange={handleInputChange} className="margin-bot"></input>
+        <button onClick={() => createProduct()}>Create Product</button>
+        <br></br>
+        <p>Available Products</p>
         <ul>
-        {
-          getProductsListElement()
-        }
+          { getProductsListElement() }
         </ul>
-
         <p>Orders</p>
         <ul>
-        {
-          getOrdersListElement()
-        }
+          { orders ? getOrdersListElement() : '' }
         </ul>
       </header>
     </div>

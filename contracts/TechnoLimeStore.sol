@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import "./Ownable.sol";
-import "hardhat/console.sol";
 
 contract TechnoLimeStore is Ownable {
 
@@ -44,7 +43,7 @@ contract TechnoLimeStore is Ownable {
     uint productId = productIdByName(_name);
 
     if (productId > 0) {
-      require(_quantity > products[productId].quantity, "You can only increase quantity.");
+      require(_quantity > products[productId].quantity, "Product exists. You can only increase its quantity.");
 
       products[productId].quantity = _quantity;
       
@@ -87,7 +86,7 @@ contract TechnoLimeStore is Ownable {
     Product storage product = products[_productId];
     require(product.id > 0, "Product doesn't exist.");
     int existingOrderIndex = getOrderIndex(_productId, msg.sender);
-    require(existingOrderIndex > -1, "Order doesn't exist.");
+    require(existingOrderIndex > -1, "The order is not made by you.");
     Order memory existingOrder = orders[uint(existingOrderIndex)];
     require(block.number - existingOrder.createdAtBlock <= ALLOWED_RETURN_BLOCK_COUNT, "You can only return an order no later than 100 blocks of time.");
 
@@ -106,6 +105,8 @@ contract TechnoLimeStore is Ownable {
   }
 
   function getAllProducts() external view returns (Product[] memory) {
+    // Looping through arrays is not a good idea due to performance and gas optimization and should be done off-chain in a web2 DB
+    // However I've left it here to change it later on if there's time
     Product[] memory productsArray = new Product[](productIds.length);
     for (uint i = 0; i < productIds.length; i++) {
       Product memory product = products[productIds[i]];
@@ -116,6 +117,7 @@ contract TechnoLimeStore is Ownable {
 
   function getProductOrders(uint _productId) external view returns (Order[] memory) {
     // Looping through arrays is not a good idea due to performance and gas optimization and should be done off-chain in a web2 DB
+    // However I've left it here to change it later on if there's time
     uint numberOfMatches;
     for(uint i = 0; i < orders.length; i++) {
       if (orders[i].productId == _productId) {
